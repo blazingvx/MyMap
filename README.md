@@ -162,4 +162,4 @@ https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png
 
 ## License
 
-Free to use and modify.
+Free to use and modify .
