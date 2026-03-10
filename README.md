@@ -127,11 +127,13 @@ https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png
 - `LineString` → Renders as blue lines
 - `Polygon` → Renders as green polygons
 
-## Keyboard Shortcuts (Coming Soon)
-- `R` - Reset view
-- `+` - Zoom in
-- `-` - Zoom out
-- `Delete` - Clear all
+## Keyboard Shortcuts
+- <kbd>Ctrl</kbd> + <kbd>Z</kbd> : Undo drawing
+- <kbd>Ctrl</kbd> + <kbd>Y</kbd> or <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> : Redo drawing
+- `R` : Reset view
+- `+` : Zoom in
+- `-` : Zoom out
+- `Delete` : Clear all
 
 ## Tips & Tricks
 
@@ -145,16 +147,16 @@ https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png
 
 - Maximum 20 zoom levels (standard for XYZ tiles)
 - Drawing accuracy depends on zoom level
-- No undo/redo functionality
+- Undo/Redo for drawing actions (buttons added)
 - No layer support (all drawings rendered together)
 - No feature properties editor
 
 ## Future Enhancements
 
-- [ ] Undo/Redo
+- [x] Undo/Redo
 - [ ] Feature properties editor
 - [ ] Multiple layers
-- [ ] Keyboard shortcuts
+- [x] Keyboard shortcuts
 - [ ] Drawing tools (rectangle, circle)
 - [ ] Measurement tools
 - [ ] Heatmap support
