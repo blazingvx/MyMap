@@ -35,6 +35,10 @@ const state = {
         polygons: []
     },
     
+    // Undo/redo stacks (store snapshots of drawings only)
+    history: [],        // past states for undo
+    redoStack: [],      // states for redo
+    
     // Current drawing
     currentLine: [],
     currentPolygon: [],
@@ -53,6 +57,43 @@ const state = {
 // ============================================================================
 const canvas = document.getElementById('mapCanvas');
 const ctx = canvas.getContext('2d');
+
+// --- history helpers ----------------------------------------------------
+function saveState() {
+    // push deep copy of current drawings
+    state.history.push(JSON.parse(JSON.stringify(state.drawings)));
+    // limit history size
+    if (state.history.length > 100) {
+        state.history.shift();
+    }
+    // clear redo when new action happens
+    state.redoStack.length = 0;
+    updateUndoRedoButtons();
+}
+
+function undo() {
+    if (state.history.length === 0) return;
+    // keep current state for redo
+    state.redoStack.push(JSON.parse(JSON.stringify(state.drawings)));
+    state.drawings = state.history.pop();
+    render();
+    updateUndoRedoButtons();
+}
+
+function redo() {
+    if (state.redoStack.length === 0) return;
+    state.history.push(JSON.parse(JSON.stringify(state.drawings)));
+    state.drawings = state.redoStack.pop();
+    render();
+    updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    if (undoBtn) undoBtn.disabled = state.history.length === 0;
+    if (redoBtn) redoBtn.disabled = state.redoStack.length === 0;
+}
 
 // Set canvas to match window size
 function resizeCanvas() {
@@ -350,6 +391,7 @@ function resetView() {
 
 function clearAll() {
     if (confirm('Clear all drawings?')) {
+        saveState();
         state.drawings = { points: [], lines: [], polygons: [] };
         render();
     }
@@ -387,7 +429,16 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseup', () => {
     state.isDragging = false;
 });
-
+// Keyboard shortcuts (global)
+window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        undo();
+    } else if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && (e.key === 'Z' || e.key === 'z'))) {
+        e.preventDefault();
+        redo();
+    }
+});
 canvas.addEventListener('mouseleave', () => {
     state.isDragging = false;
 });
@@ -418,7 +469,9 @@ canvas.addEventListener('click', (e) => {
     const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
     
     if (state.mode === 'point') {
+        saveState();
         state.drawings.points.push({ lat, lon });
+        render();
     } else if (state.mode === 'line') {
         state.currentLine.push({ lat, lon });
         render();
@@ -431,10 +484,12 @@ canvas.addEventListener('click', (e) => {
 // Double click to finish line/polygon
 canvas.addEventListener('dblclick', (e) => {
     if (state.mode === 'line' && state.currentLine.length > 1) {
+        saveState();
         state.drawings.lines.push([...state.currentLine]);
         state.currentLine = [];
         render();
     } else if (state.mode === 'polygon' && state.currentPolygon.length > 2) {
+        saveState();
         state.drawings.polygons.push([...state.currentPolygon]);
         state.currentPolygon = [];
         render();
@@ -578,6 +633,8 @@ function importGeoJSON() {
                 let importedCount = 0;
                 let errorCount = 0;
                 
+                // before modifying drawings push state once
+                saveState();
                 features.forEach((feature, index) => {
                     try {
                         // Validate feature structure
@@ -729,3 +786,6 @@ if ('serviceWorker' in navigator) {
 // Initialize
 setMode('pan');
 render();
+// record the empty initial drawing state and update buttons
+saveState();
+updateUndoRedoButtons();
