@@ -139,6 +139,9 @@
             <button id="pointBtn" onclick="setMode('point')">• Point</button>
             <button id="lineBtn" onclick="setMode('line')">— Line</button>
             <button id="polygonBtn" onclick="setMode('polygon')">▲ Polygon</button>
+            <button id="distanceBtn" onclick="setMode('distance')">📏 Distance</button>
+            <button id="areaBtn" onclick="setMode('area')">📐 Area</button>
+            <button id="measurementClearBtn" onclick="clearMeasurement()">✖ Clear M</button>
         </div>
 
         <div class="toolbar-group">
@@ -164,7 +167,10 @@
         <div>Points: <span id="pointCount">0</span></div>
         <div>Lines: <span id="lineCount">0</span></div>
         <div>Polygons: <span id="polygonCount">0</span></div>
-    </div>
+        <div class="label" style="margin-top: 8px;">MEASUREMENT</div>
+        <div>Mode: <span id="measurementMode">none</span></div>
+        <div>Value: <span id="measurementValue">0</span></div>
+</div>
 
     <script src="app.js"></script>
 </body>

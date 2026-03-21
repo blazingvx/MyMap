@@ -42,6 +42,14 @@ const state = {
     // Current drawing
     currentLine: [],
     currentPolygon: [],
+
+    // Measurement
+    measurement: {
+        mode: 'none', // none, distance, area
+        points: [],
+        value: 0,
+        unit: ''
+    },
     
     // Pan/drag
     isDragging: false,
@@ -150,6 +158,112 @@ function getTile(x, y, zoom) {
     
     img.src = `${CONFIG.TILE_SERVER}/${zoom}/${x}/${y}.png`;
     return img;
+}
+
+// Measurement utilities
+function toRad(value) {
+    return value * Math.PI / 180;
+}
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // meters
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+function computeDistance(points) {
+    if (!points || points.length < 2) return 0;
+    let distance = 0;
+    for (let i = 1; i < points.length; i++) {
+        distance += haversineDistance(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+    }
+    return distance;
+}
+
+function computePolygonArea(points) {
+    // Spherical excess approximation (valid for small/medium polygons)
+    if (!points || points.length < 3) return 0;
+    const R = 6371000;
+    const totalPoints = points.length;
+    let sum = 0;
+
+    for (let i = 0; i < totalPoints; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % totalPoints];
+        const lon1 = toRad(p1.lon);
+        const lat1 = toRad(p1.lat);
+        const lon2 = toRad(p2.lon);
+        const lat2 = toRad(p2.lat);
+        sum += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+    }
+
+    const area = Math.abs(sum) * R * R / 2;
+    return area;
+}
+
+function updateMeasurementDisplay() {
+    const modeText = state.measurement.mode === 'none' ? 'none' : state.measurement.mode;
+    document.getElementById('measurementMode').textContent = modeText;
+
+    let valueText = '0';
+    if (state.measurement.mode === 'distance') {
+        const m = computeDistance(state.measurement.points);
+        state.measurement.value = m;
+        state.measurement.unit = m >= 1000 ? 'km' : 'm';
+        if (m >= 1000) {
+            valueText = `${(m / 1000).toFixed(3)} km`;
+        } else {
+            valueText = `${m.toFixed(2)} m`;
+        }
+    } else if (state.measurement.mode === 'area') {
+        const m2 = computePolygonArea(state.measurement.points);
+        state.measurement.value = m2;
+        state.measurement.unit = m2 >= 1000000 ? 'km²' : 'm²';
+        if (m2 >= 1000000) {
+            valueText = `${(m2 / 1000000).toFixed(3)} km²`;
+        } else {
+            valueText = `${m2.toFixed(2)} m²`;
+        }
+    } else {
+        state.measurement.value = 0;
+        state.measurement.unit = '';
+    }
+
+    document.getElementById('measurementValue').textContent = valueText;
+}
+
+function setMeasurementMode(mode) {
+    state.measurement.mode = mode;
+    state.measurement.points = [];
+    state.measurement.value = 0;
+    state.measurement.unit = '';
+    updateMeasurementButtonStyles();
+    updateMeasurementDisplay();
+    render();
+}
+
+function clearMeasurement() {
+    state.measurement.mode = 'none';
+    state.measurement.points = [];
+    state.measurement.value = 0;
+    state.measurement.unit = '';
+    updateMeasurementButtonStyles();
+    updateMeasurementDisplay();
+    render();
+}
+
+function updateMeasurementButtonStyles() {
+    document.getElementById('distanceBtn').classList.toggle('active', state.measurement.mode === 'distance');
+    document.getElementById('areaBtn').classList.toggle('active', state.measurement.mode === 'area');
+    document.getElementById('panBtn').classList.remove('active');
+    document.getElementById('pointBtn').classList.remove('active');
+    document.getElementById('lineBtn').classList.remove('active');
+    document.getElementById('polygonBtn').classList.remove('active');
 }
 
 // ============================================================================
@@ -282,6 +396,41 @@ function renderDrawings() {
         ctx.lineWidth = CONFIG.DRAW_STYLES.polygon.strokeWidth;
         ctx.stroke();
     });
+
+    // Measurement overlay
+    if (state.measurement.points.length > 0) {
+        const points = state.measurement.points;
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = state.measurement.mode === 'area' ? '#FF6600' : '#0066FF';
+        ctx.fillStyle = 'rgba(255, 102, 0, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < points.length; i++) {
+            const pixel = worldToCanvas(points[i].lat, points[i].lon);
+            if (i === 0) ctx.moveTo(pixel.x, pixel.y);
+            else ctx.lineTo(pixel.x, pixel.y);
+        }
+        if (state.measurement.mode === 'area' && points.length > 2) {
+            const firstPixel = worldToCanvas(points[0].lat, points[0].lon);
+            ctx.lineTo(firstPixel.x, firstPixel.y);
+            ctx.fill();
+        }
+        ctx.stroke();
+
+        // Points
+        points.forEach(point => {
+            const pixel = worldToCanvas(point.lat, point.lon);
+            ctx.beginPath();
+            ctx.arc(pixel.x, pixel.y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        });
+        ctx.restore();
+    }
     
     // Draw current line being drawn
     if (state.currentLine.length > 0) {
@@ -348,6 +497,7 @@ function updateInfoPanel() {
     document.getElementById('pointCount').textContent = state.drawings.points.length;
     document.getElementById('lineCount').textContent = state.drawings.lines.length;
     document.getElementById('polygonCount').textContent = state.drawings.polygons.length;
+    updateMeasurementDisplay();
 }
 
 // ============================================================================
@@ -355,22 +505,31 @@ function updateInfoPanel() {
 // ============================================================================
 
 function setMode(newMode) {
-    state.mode = newMode;
-    
-    // Update button styles
-    document.getElementById('panBtn').classList.remove('active');
-    document.getElementById('pointBtn').classList.remove('active');
-    document.getElementById('lineBtn').classList.remove('active');
-    document.getElementById('polygonBtn').classList.remove('active');
-    
-    if (newMode === 'pan') document.getElementById('panBtn').classList.add('active');
-    if (newMode === 'point') document.getElementById('pointBtn').classList.add('active');
-    if (newMode === 'line') document.getElementById('lineBtn').classList.add('active');
-    if (newMode === 'polygon') document.getElementById('polygonBtn').classList.add('active');
-    
-    // Reset current drawing
-    state.currentLine = [];
-    state.currentPolygon = [];
+    // Clear measurement mode when using drawing/pan modes, or set it explicitly
+    if (newMode === 'distance' || newMode === 'area') {
+        state.mode = newMode;
+        setMeasurementMode(newMode);
+    } else {
+        state.mode = newMode;
+        setMeasurementMode('none');
+        // Update button styles
+        document.getElementById('panBtn').classList.remove('active');
+        document.getElementById('pointBtn').classList.remove('active');
+        document.getElementById('lineBtn').classList.remove('active');
+        document.getElementById('polygonBtn').classList.remove('active');
+        document.getElementById('distanceBtn').classList.remove('active');
+        document.getElementById('areaBtn').classList.remove('active');
+
+        if (newMode === 'pan') document.getElementById('panBtn').classList.add('active');
+        if (newMode === 'point') document.getElementById('pointBtn').classList.add('active');
+        if (newMode === 'line') document.getElementById('lineBtn').classList.add('active');
+        if (newMode === 'polygon') document.getElementById('polygonBtn').classList.add('active');
+
+        state.currentLine = [];
+        state.currentPolygon = [];
+    }
+
+    render();
 }
 
 function zoomIn() {
@@ -477,6 +636,10 @@ canvas.addEventListener('click', (e) => {
         render();
     } else if (state.mode === 'polygon') {
         state.currentPolygon.push({ lat, lon });
+        render();
+    } else if (state.mode === 'distance' || state.mode === 'area') {
+        state.measurement.points.push({ lat, lon });
+        updateMeasurementDisplay();
         render();
     }
 });
