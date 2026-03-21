@@ -1,6 +1,8 @@
 # Map Application
 
-A lightweight, high-performance map application with drawing and GeoJSON support.
+A lightweight, high-performance map application with drawing and GeoJSON support. 
+
+[![Live Site](https://img.shields.io/badge/Live-Site-brightgreen)](https://blazingvx.github.io/MyMap/)
 
 ## Features
 
