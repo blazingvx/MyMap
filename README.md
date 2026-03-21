@@ -158,7 +158,7 @@ https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png
 - [ ] Multiple layers
 - [x] Keyboard shortcuts
 - [ ] Drawing tools (rectangle, circle)
-- [ ] Measurement tools
+- [x] Measurement tools
 - [ ] Heatmap support
 - [ ] Custom tile sources
 
