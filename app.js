@@ -28,14 +28,22 @@ const state = {
     zoom: CONFIG.DEFAULT_ZOOM,
     center: { ...CONFIG.DEFAULT_CENTER },
     
-    // Drawing
-    drawings: {
-        points: [],
-        lines: [],
-        polygons: []
-    },
+    // Layers system
+    layers: [
+        {
+            id: 'default',
+            name: 'Default Layer',
+            visible: true,
+            drawings: {
+                points: [],
+                lines: [],
+                polygons: []
+            }
+        }
+    ],
+    currentLayerId: 'default',
     
-    // Undo/redo stacks (store snapshots of drawings only)
+    // Undo/redo stacks (store snapshots of layers only)
     history: [],        // past states for undo
     redoStack: [],      // states for redo
     
@@ -68,8 +76,8 @@ const ctx = canvas.getContext('2d');
 
 // --- history helpers ----------------------------------------------------
 function saveState() {
-    // push deep copy of current drawings
-    state.history.push(JSON.parse(JSON.stringify(state.drawings)));
+    // push deep copy of current layers
+    state.history.push(JSON.parse(JSON.stringify(state.layers)));
     // limit history size
     if (state.history.length > 100) {
         state.history.shift();
@@ -82,18 +90,20 @@ function saveState() {
 function undo() {
     if (state.history.length === 0) return;
     // keep current state for redo
-    state.redoStack.push(JSON.parse(JSON.stringify(state.drawings)));
-    state.drawings = state.history.pop();
+    state.redoStack.push(JSON.parse(JSON.stringify(state.layers)));
+    state.layers = state.history.pop();
     render();
     updateUndoRedoButtons();
+    updateLayersPanel();
 }
 
 function redo() {
     if (state.redoStack.length === 0) return;
-    state.history.push(JSON.parse(JSON.stringify(state.drawings)));
-    state.drawings = state.redoStack.pop();
+    state.history.push(JSON.parse(JSON.stringify(state.layers)));
+    state.layers = state.redoStack.pop();
     render();
     updateUndoRedoButtons();
+    updateLayersPanel();
 }
 
 function updateUndoRedoButtons() {
@@ -101,6 +111,135 @@ function updateUndoRedoButtons() {
     const redoBtn = document.getElementById('redoBtn');
     if (undoBtn) undoBtn.disabled = state.history.length === 0;
     if (redoBtn) redoBtn.disabled = state.redoStack.length === 0;
+}
+
+// ============================================================================
+// LAYER MANAGEMENT
+// ============================================================================
+
+function getCurrentLayer() {
+    return state.layers.find(layer => layer.id === state.currentLayerId) || state.layers[0];
+}
+
+function addLayer(name = null) {
+    const layerName = name || `Layer ${state.layers.length + 1}`;
+    const layerId = 'layer_' + Date.now();
+    const newLayer = {
+        id: layerId,
+        name: layerName,
+        visible: true,
+        drawings: {
+            points: [],
+            lines: [],
+            polygons: []
+        }
+    };
+    state.layers.push(newLayer);
+    state.currentLayerId = layerId;
+    updateLayersPanel();
+    render();
+}
+
+function removeLayer(layerId) {
+    if (state.layers.length <= 1) {
+        alert('Cannot remove the last layer');
+        return;
+    }
+    
+    const index = state.layers.findIndex(layer => layer.id === layerId);
+    if (index === -1) return;
+    
+    saveState();
+    state.layers.splice(index, 1);
+    
+    // If we removed the current layer, switch to the first one
+    if (state.currentLayerId === layerId) {
+        state.currentLayerId = state.layers[0].id;
+    }
+    
+    updateLayersPanel();
+    render();
+}
+
+function toggleLayerVisibility(layerId) {
+    const layer = state.layers.find(layer => layer.id === layerId);
+    if (layer) {
+        layer.visible = !layer.visible;
+        updateLayersPanel();
+        render();
+    }
+}
+
+function setCurrentLayer(layerId) {
+    if (state.layers.find(layer => layer.id === layerId)) {
+        state.currentLayerId = layerId;
+        updateLayersPanel();
+    }
+}
+
+function renameLayer(layerId, newName) {
+    const layer = state.layers.find(layer => layer.id === layerId);
+    if (layer) {
+        layer.name = newName.trim() || 'Unnamed Layer';
+        updateLayersPanel();
+    }
+}
+
+function getAllDrawings() {
+    // Combine all visible layers' drawings for rendering
+    const allDrawings = {
+        points: [],
+        lines: [],
+        polygons: []
+    };
+    
+    state.layers.forEach(layer => {
+        if (layer.visible) {
+            allDrawings.points.push(...layer.drawings.points);
+            allDrawings.lines.push(...layer.drawings.lines);
+            allDrawings.polygons.push(...layer.drawings.polygons);
+        }
+    });
+    
+    return allDrawings;
+}
+
+function updateLayersPanel() {
+    const layersPanel = document.getElementById('layersPanel');
+    if (!layersPanel) return;
+    
+    layersPanel.innerHTML = '';
+    
+    state.layers.forEach(layer => {
+        const layerDiv = document.createElement('div');
+        layerDiv.className = 'layer-item';
+        if (layer.id === state.currentLayerId) {
+            layerDiv.classList.add('active');
+        }
+        
+        const count = layer.drawings.points.length + layer.drawings.lines.length + layer.drawings.polygons.length;
+        
+        layerDiv.innerHTML = `
+            <input type="checkbox" ${layer.visible ? 'checked' : ''} 
+                   onchange="toggleLayerVisibility('${layer.id}')">
+            <span class="layer-name" onclick="setCurrentLayer('${layer.id}')" 
+                  ondblclick="renameLayerPrompt('${layer.id}', '${layer.name.replace(/'/g, "\\'")}')">
+                ${layer.name}
+            </span>
+            <span class="layer-count">(${count})</span>
+            <button class="layer-remove" onclick="removeLayer('${layer.id}')" 
+                    ${state.layers.length <= 1 ? 'disabled' : ''}>×</button>
+        `;
+        
+        layersPanel.appendChild(layerDiv);
+    });
+}
+
+function renameLayerPrompt(layerId, currentName) {
+    const newName = prompt('Enter new layer name:', currentName);
+    if (newName !== null && newName.trim() !== '') {
+        renameLayer(layerId, newName);
+    }
 }
 
 // Set canvas to match window size
@@ -329,6 +468,9 @@ function renderDrawings() {
     const canvasWidth = canvas.width / (window.devicePixelRatio || 1);
     const canvasHeight = canvas.height / (window.devicePixelRatio || 1);
     
+    // Get combined drawings from all visible layers
+    const drawings = getAllDrawings();
+    
     // Convert map coordinates to canvas pixel coordinates
     const worldToCanvas = (lat, lon) => {
         const tile = latLonToTile(lat, lon, state.zoom);
@@ -346,7 +488,7 @@ function renderDrawings() {
     };
     
     // Draw points
-    state.drawings.points.forEach(point => {
+    drawings.points.forEach(point => {
         const pixel = worldToCanvas(point.lat, point.lon);
         ctx.beginPath();
         ctx.arc(pixel.x, pixel.y, CONFIG.DRAW_STYLES.point.size, 0, Math.PI * 2);
@@ -355,7 +497,7 @@ function renderDrawings() {
     });
     
     // Draw lines
-    state.drawings.lines.forEach(line => {
+    drawings.lines.forEach(line => {
         if (line.length < 2) return;
         ctx.beginPath();
         let first = true;
@@ -374,7 +516,7 @@ function renderDrawings() {
     });
     
     // Draw polygons
-    state.drawings.polygons.forEach(polygon => {
+    drawings.polygons.forEach(polygon => {
         if (polygon.length < 3) return;
         ctx.beginPath();
         let first = true;
@@ -492,11 +634,12 @@ function renderDrawings() {
 }
 
 function updateInfoPanel() {
+    const drawings = getAllDrawings();
     document.getElementById('zoomLevel').textContent = state.zoom;
     document.getElementById('centerCoords').textContent = `${state.center.lat.toFixed(2)}, ${state.center.lon.toFixed(2)}`;
-    document.getElementById('pointCount').textContent = state.drawings.points.length;
-    document.getElementById('lineCount').textContent = state.drawings.lines.length;
-    document.getElementById('polygonCount').textContent = state.drawings.polygons.length;
+    document.getElementById('pointCount').textContent = drawings.points.length;
+    document.getElementById('lineCount').textContent = drawings.lines.length;
+    document.getElementById('polygonCount').textContent = drawings.polygons.length;
     updateMeasurementDisplay();
 }
 
@@ -549,9 +692,11 @@ function resetView() {
 }
 
 function clearAll() {
-    if (confirm('Clear all drawings?')) {
+    if (confirm('Clear all drawings from all layers?')) {
         saveState();
-        state.drawings = { points: [], lines: [], polygons: [] };
+        state.layers.forEach(layer => {
+            layer.drawings = { points: [], lines: [], polygons: [] };
+        });
         render();
     }
 }
@@ -629,7 +774,8 @@ canvas.addEventListener('click', (e) => {
     
     if (state.mode === 'point') {
         saveState();
-        state.drawings.points.push({ lat, lon });
+        const currentLayer = getCurrentLayer();
+        currentLayer.drawings.points.push({ lat, lon });
         render();
     } else if (state.mode === 'line') {
         state.currentLine.push({ lat, lon });
@@ -648,12 +794,14 @@ canvas.addEventListener('click', (e) => {
 canvas.addEventListener('dblclick', (e) => {
     if (state.mode === 'line' && state.currentLine.length > 1) {
         saveState();
-        state.drawings.lines.push([...state.currentLine]);
+        const currentLayer = getCurrentLayer();
+        currentLayer.drawings.lines.push([...state.currentLine]);
         state.currentLine = [];
         render();
     } else if (state.mode === 'polygon' && state.currentPolygon.length > 2) {
         saveState();
-        state.drawings.polygons.push([...state.currentPolygon]);
+        const currentLayer = getCurrentLayer();
+        currentLayer.drawings.polygons.push([...state.currentPolygon]);
         state.currentPolygon = [];
         render();
     }
@@ -667,50 +815,59 @@ function exportGeoJSON() {
     try {
         const features = [];
         
-        // Export points
-        state.drawings.points.forEach((point, idx) => {
-            features.push({
-                type: 'Feature',
-                properties: {
-                    name: `Point ${idx + 1}`,
-                    timestamp: new Date().toISOString()
-                },
-                geometry: {
-                    type: 'Point',
-                    coordinates: [point.lon, point.lat]
-                }
+        // Export from all layers
+        state.layers.forEach(layer => {
+            // Export points
+            layer.drawings.points.forEach((point, idx) => {
+                features.push({
+                    type: 'Feature',
+                    properties: {
+                        name: `Point ${idx + 1}`,
+                        layerId: layer.id,
+                        layerName: layer.name,
+                        timestamp: new Date().toISOString()
+                    },
+                    geometry: {
+                        type: 'Point',
+                        coordinates: [point.lon, point.lat]
+                    }
+                });
             });
-        });
-        
-        // Export lines
-        state.drawings.lines.forEach((line, idx) => {
-            features.push({
-                type: 'Feature',
-                properties: {
-                    name: `Line ${idx + 1}`,
-                    vertices: line.length,
-                    timestamp: new Date().toISOString()
-                },
-                geometry: {
-                    type: 'LineString',
-                    coordinates: line.map(p => [p.lon, p.lat])
-                }
+            
+            // Export lines
+            layer.drawings.lines.forEach((line, idx) => {
+                features.push({
+                    type: 'Feature',
+                    properties: {
+                        name: `Line ${idx + 1}`,
+                        layerId: layer.id,
+                        layerName: layer.name,
+                        vertices: line.length,
+                        timestamp: new Date().toISOString()
+                    },
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: line.map(p => [p.lon, p.lat])
+                    }
+                });
             });
-        });
-        
-        // Export polygons
-        state.drawings.polygons.forEach((polygon, idx) => {
-            features.push({
-                type: 'Feature',
-                properties: {
-                    name: `Polygon ${idx + 1}`,
-                    vertices: polygon.length,
-                    timestamp: new Date().toISOString()
-                },
-                geometry: {
-                    type: 'Polygon',
-                    coordinates: [polygon.map(p => [p.lon, p.lat])]
-                }
+            
+            // Export polygons
+            layer.drawings.polygons.forEach((polygon, idx) => {
+                features.push({
+                    type: 'Feature',
+                    properties: {
+                        name: `Polygon ${idx + 1}`,
+                        layerId: layer.id,
+                        layerName: layer.name,
+                        vertices: polygon.length,
+                        timestamp: new Date().toISOString()
+                    },
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [polygon.map(p => [p.lon, p.lat])]
+                    }
+                });
             });
         });
         
@@ -725,7 +882,13 @@ function exportGeoJSON() {
                     lon: state.center.lon
                 },
                 zoom: state.zoom,
-                totalFeatures: features.length
+                totalFeatures: features.length,
+                layers: state.layers.map(layer => ({
+                    id: layer.id,
+                    name: layer.name,
+                    visible: layer.visible,
+                    featureCount: layer.drawings.points.length + layer.drawings.lines.length + layer.drawings.polygons.length
+                }))
             }
         };
         
@@ -748,7 +911,7 @@ function exportGeoJSON() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         
-        alert(`✓ Exported ${features.length} feature${features.length !== 1 ? 's' : ''}`);
+        alert(`✓ Exported ${features.length} feature${features.length !== 1 ? 's' : ''} from ${state.layers.length} layer${state.layers.length !== 1 ? 's' : ''}`);
         
     } catch (err) {
         console.error('Export error:', err);
@@ -796,8 +959,9 @@ function importGeoJSON() {
                 let importedCount = 0;
                 let errorCount = 0;
                 
-                // before modifying drawings push state once
-                saveState();
+                // Group features by layer
+                const layerGroups = {};
+                
                 features.forEach((feature, index) => {
                     try {
                         // Validate feature structure
@@ -809,16 +973,36 @@ function importGeoJSON() {
                         const geometry = feature.geometry;
                         const type = geometry.type;
                         const coordinates = geometry.coordinates;
+                        const properties = feature.properties || {};
                         
                         if (!coordinates) {
                             console.warn(`Feature ${index} has no coordinates`);
                             return;
                         }
                         
+                        // Determine layer for this feature
+                        let layerId = properties.layerId || 'imported';
+                        let layerName = properties.layerName || 'Imported Layer';
+                        
+                        if (!layerGroups[layerId]) {
+                            layerGroups[layerId] = {
+                                id: layerId,
+                                name: layerName,
+                                visible: true,
+                                drawings: {
+                                    points: [],
+                                    lines: [],
+                                    polygons: []
+                                }
+                            };
+                        }
+                        
+                        const layer = layerGroups[layerId];
+                        
                         if (type === 'Point' || type === 'point') {
                             // Point: [lon, lat]
                             if (Array.isArray(coordinates) && coordinates.length >= 2) {
-                                state.drawings.points.push({
+                                layer.drawings.points.push({
                                     lon: coordinates[0],
                                     lat: coordinates[1]
                                 });
@@ -832,7 +1016,7 @@ function importGeoJSON() {
                                     lon: c[0],
                                     lat: c[1]
                                 }));
-                                state.drawings.lines.push(line);
+                                layer.drawings.lines.push(line);
                                 importedCount++;
                             }
                         } 
@@ -845,7 +1029,7 @@ function importGeoJSON() {
                                         lon: c[0],
                                         lat: c[1]
                                     }));
-                                    state.drawings.polygons.push(polygon);
+                                    layer.drawings.polygons.push(polygon);
                                     importedCount++;
                                 }
                             }
@@ -860,12 +1044,30 @@ function importGeoJSON() {
                     }
                 });
                 
+                // Add imported layers to state
+                saveState();
+                Object.values(layerGroups).forEach(layer => {
+                    // Check if layer already exists
+                    const existingLayer = state.layers.find(l => l.id === layer.id);
+                    if (existingLayer) {
+                        // Merge with existing layer
+                        existingLayer.drawings.points.push(...layer.drawings.points);
+                        existingLayer.drawings.lines.push(...layer.drawings.lines);
+                        existingLayer.drawings.polygons.push(...layer.drawings.polygons);
+                    } else {
+                        // Add as new layer
+                        state.layers.push(layer);
+                    }
+                });
+                
                 // Render updated map
                 render();
+                updateLayersPanel();
                 
                 // Show results
+                const layerCount = Object.keys(layerGroups).length;
                 if (importedCount > 0) {
-                    let msg = `✓ Imported ${importedCount} feature${importedCount !== 1 ? 's' : ''}`;
+                    let msg = `✓ Imported ${importedCount} feature${importedCount !== 1 ? 's' : ''} into ${layerCount} layer${layerCount !== 1 ? 's' : ''}`;
                     if (errorCount > 0) {
                         msg += ` (${errorCount} errors)`;
                     }
@@ -948,6 +1150,7 @@ if ('serviceWorker' in navigator) {
 
 // Initialize
 setMode('pan');
+updateLayersPanel();
 render();
 // record the empty initial drawing state and update buttons
 saveState();

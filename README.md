@@ -71,6 +71,33 @@ A lightweight, high-performance map application with drawing and GeoJSON support
 1. Click "🗑️ Clear" button
 2. Confirms before deleting all drawings
 
+### Layers Management
+
+#### Adding Layers
+1. Click the "+" button in the Layers panel
+2. New layers are created with default names
+
+#### Switching Active Layer
+1. Click on a layer name in the Layers panel
+2. The active layer is highlighted and receives new drawings
+
+#### Layer Visibility
+1. Check/uncheck the checkbox next to layer names
+2. Unchecked layers are hidden from the map
+
+#### Renaming Layers
+1. Double-click on a layer name
+2. Enter the new name in the prompt
+
+#### Removing Layers
+1. Click the "×" button next to a layer name
+2. Cannot remove the last remaining layer
+
+#### Importing Layers
+1. When importing GeoJSON files, features are automatically organized into layers
+2. If the GeoJSON contains layer information, it will recreate the original layer structure
+3. Imported features without layer info go into an "Imported Layer"
+
 ## Map Information
 
 The info panel (bottom-right) shows:
@@ -81,8 +108,8 @@ The info panel (bottom-right) shows:
 ## Technical Details
 
 ### File Structure
-- `index.html` - UI with canvas and toolbar
-- `app.js` - Complete application logic (~600 lines)
+- `index.html` - UI with canvas, toolbar, layers panel, and info panel
+- `app.js` - Complete application logic with layer management (~700 lines)
 - `sw.js` - Service Worker for caching
 
 ### Tile Source
@@ -116,9 +143,24 @@ https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png
         "type": "Point",
         "coordinates": [lon, lat]
       },
-      "properties": {}
+      "properties": {
+        "layerId": "layer_1234567890",
+        "layerName": "My Layer",
+        "name": "Point 1",
+        "timestamp": "2024-01-01T00:00:00.000Z"
+      }
     }
-  ]
+  ],
+  "properties": {
+    "layers": [
+      {
+        "id": "layer_1234567890",
+        "name": "My Layer",
+        "visible": true,
+        "featureCount": 5
+      }
+    ]
+  }
 }
 ```
 
@@ -147,15 +189,13 @@ https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png
 
 - Maximum 20 zoom levels (standard for XYZ tiles)
 - Drawing accuracy depends on zoom level
-- Undo/Redo for drawing actions (buttons added)
-- No layer support (all drawings rendered together)
 - No feature properties editor
 
 ## Future Enhancements
 
 - [x] Undo/Redo
 - [ ] Feature properties editor
-- [ ] Multiple layers
+- [x] **Multiple layers** - Organize drawings into named layers with visibility control
 - [x] Keyboard shortcuts
 - [ ] Drawing tools (rectangle, circle)
 - [x] Measurement tools
